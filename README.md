@@ -1,5 +1,5 @@
+
 # AST-Transpiler
-## [Inactive] This repository was moved to https://github.com/ccxt/ast-transpiler
 [![Build](https://github.com/carlosmiei/ast-transpiler/actions/workflows/node.js.yml/badge.svg?branch=master)](https://github.com/carlosmiei/ast-transpiler/actions/workflows/node.js.yml)
 ![Jest coverage](./badges/coverage-jest%20coverage.svg)
 ![Functions](./badges/coverage-functions.svg)
@@ -128,7 +128,7 @@ Warning: Under active development so can change at any time!
 - Basic string manipulation 
   - `concat`, `length`, `includes`, `indexOf`
 - Basic arrays manipulation
-  - `includes`, `length`, `push`, `pop`, `shift`
+  - `includes`, `length`, `push`, `pop`, `reverse`, `shift`
 - Basic object manipulation
   - `Object.keys`, `Object.values`
 - Binary expressions

@@ -415,7 +415,7 @@ describe('php transpiling tests', () => {
         "const h = Math.round (5);\n" +
         "const i = Math.floor (5.5);\n";
         const php =
-        "$ceil = (int) ceil($num);\n" +
+        "$ceil = ((int) ceil($num));\n" +
         "$a = min(0, 5);\n" +
         "$b = max(0, 5);\n" +
         "$c = floatval('1.3');\n" +
@@ -513,6 +513,7 @@ describe('php transpiling tests', () => {
         "const listFirst = myList[0];\n" +
         "myList.push (4);\n" +
         "myList.pop ();\n" +
+        "myList.reverse ();\n" +
         "myList.shift ();"
         const php =
         "$myList = [1, 2, 3];\n" +
@@ -523,6 +524,7 @@ describe('php transpiling tests', () => {
         "$listFirst = $myList[0];\n" +
         "$myList[] = 4;\n" +
         "array_pop($myList);\n" +
+        "$myList = array_reverse($myList);\n" +
         "array_shift($myList);"
         const output = transpiler.transpilePhp(ts).content;
         expect(output).toBe(php);
@@ -555,7 +557,7 @@ describe('php transpiling tests', () => {
         "    return [];\n" +
         "}"
         const php =
-        "if (e instanceof NullResponse) {\n" +
+        "if ($e instanceof NullResponse) {\n" +
         "    return [];\n" +
         "}"
         const output = transpiler.transpilePhp(ts).content;
@@ -776,11 +778,35 @@ describe('php transpiling tests', () => {
         const output = transpiler.transpilePhp(ts).content;
         expect(output).toBe(php);
     });
+    test('should transpile continue statement', () => {
+        const ts =
+        "while(true){\n"+
+        "    continue;\n"+
+        "}"
+        const php =
+        "while (true) {\n" +
+        "    continue;\n" +
+        "}"
+        const output = transpiler.transpilePhp(ts).content;
+        expect(output).toBe(php);
+    });
     test('should transpile assert', () => {
         const ts =
         "assert(1+1, 'failed assertion')"
         const php =
         "assert(1 + 1, 'failed assertion');"
+        const output = transpiler.transpilePhp(ts).content;
+        expect(output).toBe(php);
+    });
+    test('should transpile Number.isInteger', () => {
+        const ts = "Number.isInteger(1)";
+        const php = "is_int(1);";
+        const output = transpiler.transpilePhp(ts).content;
+        expect(output).toBe(php);
+    });
+    test('should convert date.now()', () => {
+        const ts = "Date.now();";
+        const php = "round(microtime(true) * 1000);";
         const output = transpiler.transpilePhp(ts).content;
         expect(output).toBe(php);
     });
@@ -791,4 +817,10 @@ describe('php transpiling tests', () => {
         transpiler.setPhpUncamelCaseIdentifiers(false);
         expect(output).toBe(php);
     });
+    test('should convert delete', () => {
+        const ts = "delete someObject[key];";
+        const php = "unset($someObject[$key]);";
+        const output = transpiler.transpilePhp(ts).content;
+        expect(output).toBe(php);
+    })
   });

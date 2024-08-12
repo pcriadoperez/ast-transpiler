@@ -1,4 +1,7 @@
-namespace ccxt;
+// tmp solution, duplicated file:
+// original file: src/TranspilerHelpers.cs
+
+namespace tests;
 
 using System.Globalization;
 using System.Reflection;
@@ -6,7 +9,7 @@ using System.Reflection;
 using dict = Dictionary<string, object>;
 
 
-public partial class Exchange
+public partial class Test
 {
 
     // tmp most of these methods are going to be re-implemented in the future to be more generic and efficient
@@ -151,16 +154,16 @@ public partial class Exchange
         return a;
     }
 
-    public object parseJson(object json)
-    {
-        // var jsonString = json.ToString();
-        // if (jsonString.StartsWith("[".ToString()))
-        // {
-        //     return JsonConvert.DeserializeObject<List<dict>>(jsonString);
-        // }
-        // return JsonConvert.DeserializeObject<dict>((string)json);
-        return JsonHelper.Deserialize((string)json);
-    }
+    // public object parseJson(object json)
+    // {
+    //     // var jsonString = json.ToString();
+    //     // if (jsonString.StartsWith("[".ToString()))
+    //     // {
+    //     //     return JsonConvert.DeserializeObject<List<dict>>(jsonString);
+    //     // }
+    //     // return JsonConvert.DeserializeObject<dict>((string)json);
+    //     return JsonHelper.Deserialize((string)json);
+    // }
 
     public static bool isTrue(object value)
     {

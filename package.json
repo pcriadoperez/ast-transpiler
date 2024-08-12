@@ -1,6 +1,6 @@
 {
   "name": "ast-transpiler",
-  "version": "0.0.11",
+  "version": "0.0.46",
   "type": "module",
   "module": "./dist/transpiler.js",
   "types": "./dist/transpiler.d.ts",
@@ -16,7 +16,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/carlosmiei/ast-transpiler"
+    "url": "https://github.com/ccxt/ast-transpiler"
   },
   "readme": "README.md",
   "scripts": {
@@ -27,7 +27,9 @@
     "test-ci": "jest --ci --coverage",
     "test": "jest --verbose",
     "testv": "jest --verbose --coverage",
-    "lint": "eslint src/ --ext .ts"
+    "integration": "node --loader ts-node/esm tests/integration/test.ts",
+    "lint": "eslint src/ --ext .ts",
+    "publishPackage": "sh publish.sh && git push && git push --tags && npm publish"
   },
   "devDependencies": {
     "@types/jest": "^29.2.0",

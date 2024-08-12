@@ -30,11 +30,11 @@ describe('python tests', () => {
         "    const x = 1;\n" +
         "    break;\n" +
         "}"
-        
+
         const python =
         "while True:\n" +
         "    x = 1\n" +
-        "    break" 
+        "    break"
         const output = transpiler.transpilePython(ts).content;
         expect(output).toBe(python);
     });
@@ -53,7 +53,7 @@ describe('python tests', () => {
         const ts =
         "function teste(){\n" +
         "    return 1;\n" +
-        "}" 
+        "}"
         const python =
         "def teste():\n" +
         "    return 1";
@@ -212,7 +212,7 @@ describe('python tests', () => {
         "    describe() {\n" +
         "        return \"foo\";\n" +
         "    }\n" +
-        "}\n" 
+        "}\n"
         const python =
         "class Teste:\n" +
         "    def describe(self):\n" +
@@ -221,7 +221,7 @@ describe('python tests', () => {
         expect(output).toBe(python);
     });
     test('basic class declaration with props', () => {
-        const ts = 
+        const ts =
         "class MyClass {\n" +
         "    public static x: number = 10;\n" +
         "    public static y: string = \"test\";\n" +
@@ -273,13 +273,13 @@ describe('python tests', () => {
         "    'limit': 'limit',\n" +
         "    'market': 'market',\n" +
         "    'margin': 'market',\n" +
-        "}\n" 
+        "}\n"
         const python =
         "types = {\n" +
         "    'limit': 'limit',\n" +
         "    'market': 'market',\n" +
         "    'margin': 'market',\n" +
-        "}" 
+        "}"
         const output = transpiler.transpilePython(ts).content;
         expect(output).toBe(python);
     });
@@ -297,7 +297,7 @@ describe('python tests', () => {
         "c = 3 / 3\n" +
         "d = 4 - 4\n" +
         "e = 5 % 5\n" +
-        "f = 'foo' + 'bar'" 
+        "f = 'foo' + 'bar'"
         const output = transpiler.transpilePython(ts).content;
         expect(output).toBe(python);
     });
@@ -306,7 +306,7 @@ describe('python tests', () => {
         "const a = true;\n" +
         "const b = false;\n" +
         "const c = true;\n" +
-        "const d = (a && b) || (c && !b);\n" 
+        "const d = (a && b) || (c && !b);\n"
         const python =
         "a = True\n" +
         "b = False\n" +
@@ -438,6 +438,7 @@ describe('python tests', () => {
         "const listFirst = myList[0];\n" +
         "myList.push (4);\n" +
         "myList.pop ();\n" +
+        "myList.reverse ();\n" +
         "myList.shift ();"
         const python =
         "myList = [1, 2, 3]\n" +
@@ -448,6 +449,7 @@ describe('python tests', () => {
         "listFirst = myList[0]\n" +
         "myList.append(4)\n" +
         "myList.pop()\n" +
+        "myList.reverse()\n" +
         "myList.pop(0)"
         const output = transpiler.transpilePython(ts).content;
         expect(output).toBe(python);
@@ -694,6 +696,12 @@ describe('python tests', () => {
         expect(output).toBe(python);
         transpiler.setPythonUncamelCaseIdentifiers(false);
     })
+    test('should transpile Number.isInteger', () => {
+        const ts = "Number.isInteger(1)"
+        const python = "isinstance(1, int)"
+        const output = transpiler.transpilePython(ts).content;
+        expect(output).toBe(python);
+    });
     test('should remove cjs import from transpiled code', () => {
         const ts =
         "const {a,b,x} = require  ('ola')  \n" +
@@ -713,11 +721,45 @@ describe('python tests', () => {
         const output = transpiler.transpilePython(ts).content;
         expect(output).toBe(python);
     });
+    test('should follow E712 comparison to True', () => {
+        const ts =
+        "if (x === true) {\n" +
+        "    console.log(1);\n" +
+        "}\n"
+        const python =
+        "if x:\n" +
+        "    print(1)"
+        const output = transpiler.transpilePython(ts).content;
+        expect(output).toBe(python);
+    });
+    test('should print continue statement', () => {
+        const ts =
+        "while(true){\n"+
+        "    continue;\n"+
+        "}";
+        const python =
+        "while True:\n"+
+        "    continue"
+        const output = transpiler.transpilePython(ts).content;
+        expect(output).toBe(python);
+    });
+    test('should convert date.now()', () => {
+        const ts = "Date.now();";
+        const python = "int(time.time() * 1000)";
+        const output = transpiler.transpilePython(ts).content;
+        expect(output).toBe(python);
+    });
     test('should transpile file from path', () => {
         transpiler.setPythonUncamelCaseIdentifiers(true);
         const python = readFileSync ('./tests/files/output/python/test1.py', "utf8");
         const output = transpiler.transpilePythonByPath('./tests/files/input/test1.ts').content;
         transpiler.setPythonUncamelCaseIdentifiers(false);
+        expect(output).toBe(python);
+    })
+    test('should convert delete', () => {
+        const ts = "delete someObject[key];";
+        const python = "del someObject[key]";
+        const output = transpiler.transpilePython(ts).content;
         expect(output).toBe(python);
     })
 });

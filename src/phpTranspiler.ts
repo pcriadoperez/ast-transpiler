@@ -124,6 +124,10 @@ export class PhpTranspiler extends BaseTranspiler {
         return `array_pop(${name})`;
     }
 
+    printReverseCall(node, identation, name = undefined) {
+        return `${name} = array_reverse(${name})`;
+    }
+
     printShiftCall(node, identation, name = undefined) {
         return `array_shift(${name})`;
     }
@@ -172,12 +176,20 @@ export class PhpTranspiler extends BaseTranspiler {
         return `((int) ceil(${parsedArg}))`;
     }
 
+    printNumberIsIntegerCall(node, identation, parsedArg?) {
+        return `is_int(${parsedArg})`;
+    }
+
     printMathRoundCall(node, identation, parsedArg = undefined) {
         return `((int) round(${parsedArg}))`;
     }
 
     printMathFloorCall(node: any, identation: any, parsedArg?: any) {
         return `((int) floor(${parsedArg}))`;
+    }
+
+    printReplaceCall(node, identation, name = undefined, parsedArg = undefined, parsedArg2 = undefined) {
+        return `str_replace(${parsedArg}, ${parsedArg2}, ${name})`;
     }
 
     printIncludesCall(node, identation, name = undefined, parsedArg = undefined) {
@@ -206,12 +218,49 @@ export class PhpTranspiler extends BaseTranspiler {
         }
     }
 
+    printStartsWithCall(node, identation, name = undefined, parsedArg = undefined) {
+        return `str_starts_with(${name}, ${parsedArg})`;
+    }
+
+    printEndsWithCall(node, identation, name = undefined, parsedArg = undefined) {
+        return `str_ends_with(${name}, ${parsedArg})`;
+    }
+
+    printTrimCall(node, identation, name = undefined) {
+        return `trim(${name})`;
+    }
+
     printJoinCall(node, identation, name = undefined, parsedArg = undefined) {
         return `implode(${parsedArg}, ${name})`;
     }
 
     printSplitCall(node, identation, name = undefined, parsedArg = undefined) {
         return `explode(${parsedArg}, ${name})`;
+    }
+
+    printPadEndCall(node, identation, name, parsedArg, parsedArg2) {
+        return `str_pad(${name}, ${parsedArg}, ${parsedArg2}, STR_PAD_RIGHT)`;
+    }
+
+    printPadStartCall(node, identation, name, parsedArg, parsedArg2) {
+        return `str_pad(${name}, ${parsedArg}, ${parsedArg2}, STR_PAD_LEFT)`;
+    }
+
+    printDateNowCall(node, identation) {
+        return "round(microtime(true) * 1000)";
+    }
+
+    printInstanceOfExpression(node, identation) {
+        // const left = this.printNode(node.left, 0);
+        // const right = this.printNode(node.right, 0);
+        const left = node.left.escapedText;
+        const right = node.right.escapedText;
+        return this.getIden(identation) + "$"+left+" instanceof "+right+"";
+    }
+
+    printDeleteExpression(node, identation) {
+        const expression = this.printNode (node.expression, 0);
+        return `unset(${expression})`;
     }
 
     getExceptionalAccessTokenIfAny(node) {
@@ -388,6 +437,7 @@ export class PhpTranspiler extends BaseTranspiler {
             // 'toUpperCase',
             // 'toLowerCase',
             // 'pop',
+            // 'reverse',
             // 'shift',
         ];
     }

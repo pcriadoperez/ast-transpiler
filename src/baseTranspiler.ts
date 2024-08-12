@@ -47,6 +47,7 @@ class BaseTranspiler {
     THROW_TOKEN = "throw";
     AWAIT_TOKEN = "await";
     STATIC_TOKEN = "static";
+    CONTINUE_TOKEN = "continue";
     EXTENDS_TOKEN = ":";
     NOT_TOKEN = "!";
     SUPER_TOKEN = "super";
@@ -160,6 +161,9 @@ class BaseTranspiler {
 
     SPREAD_TOKEN = "...";
 
+    INFER_VAR_TYPE = false;
+    INFER_ARG_TYPE = false;
+
     SupportedKindNames = {};
     PostFixOperators = {};
     PrefixFixOperators = {};
@@ -173,6 +177,8 @@ class BaseTranspiler {
     CallExpressionReplacements = {};
     ReservedKeywordsReplacements = {};
     PropertyAccessRequiresParenthesisRemoval = [];
+    VariableTypeReplacements = {};
+    ArgTypeReplacements = {};
 
     FuncModifiers = {};
 
@@ -549,15 +555,21 @@ class BaseTranspiler {
         const initializer = node.initializer;
 
         let type = this.printParameterType(node);
-        type = type ? type + " " : "";
+        type = type ? type : "";
 
         if (defaultValue) {
             if (initializer) {
                 const customDefaultValue = this.printCustomDefaultValueIfNeeded(initializer);
                 const defaultValue = customDefaultValue ? customDefaultValue : this.printNode(initializer, 0);
+                if (type) {
+                    type = (defaultValue === "null" && type !== "object") ? type + "? ": type + " ";
+                }
                 return type + name + this.SPACE_DEFAULT_PARAM + "=" + this.SPACE_DEFAULT_PARAM + defaultValue;
             }
-            return type + name;
+            if (type === "") {
+                return name;
+            }
+            return type + " " + name;
         }
         return name;
     }
@@ -772,20 +784,17 @@ class BaseTranspiler {
             return "";
         }
 
-        const typeText = this.getType(node);
-        // if (typeText === this.BOOLEAN_KEYWORD) {
-        //     return typeText;
-        // }
-
-        return this.DEFAULT_PARAMETER_TYPE;
-
-        if (typeText === undefined || typeText === this.STRING_KEYWORD) {
-            // throw new FunctionReturnTypeError("Parameter type is not supported or undefined");
-            this.warn(node, node.getText(), "Parameter type not found, will default to: " + this.DEFAULT_PARAMETER_TYPE);
+        if (!this.INFER_ARG_TYPE) {
             return this.DEFAULT_PARAMETER_TYPE;
         }
-        return typeText;
 
+        const type = global.checker.typeToString(global.checker.getTypeAtLocation(node));
+
+        if (this.ArgTypeReplacements[type]) {
+            return this.ArgTypeReplacements[type];
+        }
+
+        return this.DEFAULT_PARAMETER_TYPE;
     }
 
     printFunctionType(node){
@@ -908,9 +917,9 @@ class BaseTranspiler {
 
     printVariableDeclarationList(node,identation) {
         const declaration = node.declarations[0];
-        // const name = declaration.name.escapedText;
-        const parsedValue = this.printNode(declaration.initializer, identation);
         const varToken = this.VAR_TOKEN ? this.VAR_TOKEN + " ": "";
+        // const name = declaration.name.escapedText;
+        const parsedValue = (declaration.initializer) ? this.printNode(declaration.initializer, identation) : this.NULL_TOKEN;
         return this.getIden(identation) + varToken + this.printNode(declaration.name) + " = " + parsedValue.trim();
     }
 
@@ -1007,6 +1016,10 @@ class BaseTranspiler {
         return undefined; // stub
     }
 
+    printNumberIsIntegerCall(node, identation, parsedArg = undefined) {
+        return undefined; // stub
+    }
+
     printArrayPushCall(node, identation, name = undefined, parsedArg = undefined) {
         return undefined; // stub
     }
@@ -1016,6 +1029,26 @@ class BaseTranspiler {
     }
 
     printIndexOfCall(node, identation, name = undefined, parsedArg = undefined) {
+        return undefined; // stub
+    }
+
+    printStartsWithCall(node, identation, name = undefined, parsedArg = undefined) {
+        return undefined; // stub
+    }
+
+    printEndsWithCall(node, identation, name = undefined, parsedArg = undefined) {
+        return undefined; // stub
+    }
+
+    printPadEndCall(node, identation, name, parsedArg, parsedArg2) {
+        return undefined; // stub
+    }
+
+    printPadStartCall(node, identation, name, parsedArg, parsedArg2) {
+        return undefined; // stub
+    }
+
+    printTrimCall(node, identation, name = undefined) {
         return undefined; // stub
     }
 
@@ -1067,6 +1100,10 @@ class BaseTranspiler {
         return `assert(${parsedArgs})`;
     }
 
+    printDateNowCall(node, identation) {
+        return undefined; // stub
+    }
+
     printCallExpression(node, identation) {
         const expression = node.expression;
 
@@ -1083,6 +1120,14 @@ class BaseTranspiler {
         if (node.expression.kind === ts.SyntaxKind.PropertyAccessExpression) {
             const expressionText = node.expression.getText().trim();
             const args = node.arguments ?? [];
+
+            if (args.length === 0) {
+                switch(expressionText) {
+                case "Date.now":
+                    return this.printDateNowCall(node, identation);
+                }
+            }
+
             if (args.length === 1) {
                 const parsedArg = this.printNode(args[0], 0);
                 switch (expressionText) {
@@ -1102,6 +1147,10 @@ class BaseTranspiler {
                     return this.printMathRoundCall(node, identation, parsedArg);
                 case "Math.floor":
                     return this.printMathFloorCall(node, identation, parsedArg);
+                case "Math.ceil":
+                    return this.printMathCeilCall(node, identation, parsedArg);
+                case "Number.isInteger":
+                    return this.printNumberIsIntegerCall(node, identation, parsedArg);
                 }
             }
             const rightSide = node.expression.name?.escapedText;
@@ -1122,6 +1171,8 @@ class BaseTranspiler {
                     return this.printPopCall(node, identation, parsedLeftSide);
                 case "reverse":
                     return this.printReverseCall(node, identation, parsedLeftSide);
+                case "trim":
+                    return this.printTrimCall(node, identation, parsedLeftSide);
                 }
             }
 
@@ -1131,6 +1182,7 @@ class BaseTranspiler {
 
             if (leftSide && rightSide && arg) {
                 const parsedArg = this.printNode(arg, identation).trimStart();
+                const secondParsedArg = args[1] ? this.printNode(args[1], identation).trimStart() : undefined;
                 const name = this.printNode(leftSide, 0);
                 switch(rightSide) {
                 case 'push':
@@ -1145,6 +1197,14 @@ class BaseTranspiler {
                     return this.printSplitCall(node, identation, name, parsedArg);
                 case 'toFixed':
                     return this.printToFixedCall(node, identation, name, parsedArg);
+                case 'endsWith':
+                    return this.printEndsWithCall(node, identation, name, parsedArg);
+                case 'startsWith':
+                    return this.printStartsWithCall(node, identation, name, parsedArg);
+                case 'padEnd':
+                    return this.printPadEndCall(node, identation, name, parsedArg, secondParsedArg);
+                case 'padStart':
+                    return this.printPadStartCall(node, identation, name, parsedArg, secondParsedArg);
                 }
 
                 if (args.length === 1 || args.length === 2) {
@@ -1160,8 +1220,13 @@ class BaseTranspiler {
         }  else {
             // handle functions like assert
             const args = node.arguments ?? [];
-            if (args.length === 2 && expression.escapedText === "assert") {
-                return this.printAssertCall(node, identation, parsedArgs);
+            if (args.length === 2) {
+                if ( expression.escapedText === "assert") {
+                    return this.printAssertCall(node, identation, parsedArgs);
+                }
+                if (expression.escapedText === "padEnd") {
+                    // check this
+                }
             }
         }
 
@@ -1377,9 +1442,9 @@ class BaseTranspiler {
 
             if (isString || isUnionString || type.flags === ts.TypeFlags.Any) { // default to string when unknown
                 const cast = ts.isStringLiteralLike(argumentExpression) ? "" : '(string)';
-                return `((${this.OBJECT_KEYWORD})${expressionAsString})[${cast}${argumentAsString}]`;
+                return `((IDictionary<string,object>)${expressionAsString})[${cast}${argumentAsString}]`;
             }
-            return `((${this.ARRAY_KEYWORD})${expressionAsString})[(int)${argumentAsString}]`;
+            return `((${this.ARRAY_KEYWORD})${expressionAsString})[Convert.ToInt32(${argumentAsString})]`;
         }
 
         return expressionAsString + "[" + argumentAsString + "]";
@@ -1477,7 +1542,7 @@ class BaseTranspiler {
     printNewExpression(node, identation) {
         let expression = node.expression?.escapedText;
         expression = expression ? expression : this.printNode(node.expression); // new Exception or new exact[string] check this out
-        const args = node.arguments.map(n => this.printNode(n, identation)).join(",");
+        const args = node.arguments.map(n => this.printNode(n, identation)).join(", ");
         const newToken = this.NEW_TOKEN ? this.NEW_TOKEN + " " : "";
         return newToken + expression + this.LEFT_PARENTHESIS + args + this.RIGHT_PARENTHESIS;
     }
@@ -1592,6 +1657,14 @@ class BaseTranspiler {
         return this.getIden(identation) + this.NULL_TOKEN;
     }
 
+    printContinueStatement(node, identation){
+        return this.getIden(identation) + this.CONTINUE_TOKEN + this.LINE_TERMINATOR;
+    }
+
+    printDeleteExpression (node, identation) {
+        return undefined;
+    }
+
     printNode(node, identation = 0): string {
 
         try {
@@ -1675,6 +1748,10 @@ class BaseTranspiler {
                 return this.printSpreadElement(node, identation);
             } else if (ts.SyntaxKind.NullKeyword === node.kind) {
                 return this.printNullKeyword(node, identation);
+            } else if (ts.isContinueStatement(node)) {
+                return this.printContinueStatement(node, identation);
+            } else if (ts.isDeleteExpression(node)) {
+                return this.printDeleteExpression(node, identation);
             }
 
             if (node.statements) {
@@ -1737,7 +1814,7 @@ class BaseTranspiler {
 
     isCJSRequireStatement(node): boolean {
         const dec = node.declarationList.declarations[0];
-        return ts.isCallExpression(dec.initializer) && dec.initializer.expression.getText() === "require";
+        return dec.initializer && ts.isCallExpression(dec.initializer) && dec.initializer.expression.getText() === "require";
     }
 
     isCJSModuleExportsExpressionStatement(node): boolean {
@@ -1757,7 +1834,7 @@ class BaseTranspiler {
         const dec = decList.map(d => d.declarations[0]);
 
         dec.forEach(decNode => {
-            if (decNode.initializer.kind === ts.SyntaxKind.CallExpression) {
+            if (decNode.initializer && decNode.initializer.kind === ts.SyntaxKind.CallExpression) {
                 const callExpression = decNode.initializer.expression.getText();
                 if (callExpression === "require") {
                     const isDefault = decNode.name.kind === ts.SyntaxKind.Identifier;

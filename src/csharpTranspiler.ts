@@ -49,6 +49,8 @@ const parserConfig = {
     'MOD_WRAPPER_OPEN': 'mod(',
     'MOD_WRAPPER_CLOSE': ')',
     'FUNCTION_TOKEN': '',
+    'INFER_VAR_TYPE': false,
+    'INFER_ARG_TYPE': false,
 };
 
 export class CSharpTranspiler extends BaseTranspiler {
@@ -117,6 +119,28 @@ export class CSharpTranspiler extends BaseTranspiler {
             'fixed': 'fixedVar',
         };
 
+        this.VariableTypeReplacements = {
+            'string': 'string',
+            'Str': 'string',
+            'number': 'double',
+            'Int': 'Int64',
+            'Num': 'double',
+            'Dict': 'Dictionary<string, object>',
+            'Strings': 'List<string>',
+            'List': 'List<object>',
+        };
+
+        this.ArgTypeReplacements = {
+            'string': 'string',
+            'Str': 'string',
+            'number': 'double',
+            'Int': 'Int64',
+            'Num': 'double',
+            'Dict': 'Dictionary<string, object>',
+            'Strings': 'List<string>',
+            'List': 'List<object>',
+        };
+
         this.binaryExpressionsWrappers = {
             [ts.SyntaxKind.EqualsEqualsToken]: [this.EQUALS_EQUALS_WRAPPER_OPEN, this.EQUALS_EQUALS_WRAPPER_CLOSE],
             [ts.SyntaxKind.EqualsEqualsEqualsToken]: [this.EQUALS_EQUALS_WRAPPER_OPEN, this.EQUALS_EQUALS_WRAPPER_CLOSE],
@@ -158,7 +182,7 @@ export class CSharpTranspiler extends BaseTranspiler {
         const type = global.checker.getTypeAtLocation(node);
         const symbol = type?.symbol;
         if (symbol !== undefined) {
-            const declarations = global.checker.getDeclaredTypeOfSymbol(symbol).symbol?.declarations ?? [];
+            // const declarations = global.checker.getDeclaredTypeOfSymbol(symbol).symbol?.declarations ?? [];
             const decl = symbol?.declarations ?? [];
             let isBuiltIn = undefined;
             if (decl.length > 0) {
@@ -166,14 +190,39 @@ export class CSharpTranspiler extends BaseTranspiler {
             }
 
             if (isBuiltIn !== undefined && !isBuiltIn) {
-                const isClassDeclaration = declarations.find(l => l.kind === ts.SyntaxKind.ClassDeclaration);
-                if (isClassDeclaration) {
-                    const isInsideNewExpression =  node?.parent?.kind === ts.SyntaxKind.NewExpression;
-                    const isInsideCatch = node?.parent?.kind === ts.SyntaxKind.ThrowStatement;
-                    const isLeftSide = node?.parent?.name === node || (node?.parent?.left === node);
-                    const isCallOrPropertyAccess = node?.parent?.kind === ts.SyntaxKind.PropertyAccessExpression || node?.parent?.kind === ts.SyntaxKind.ElementAccessExpression;
-                    if (!isLeftSide && !isCallOrPropertyAccess && !isInsideCatch && !isInsideNewExpression) {
+                // const isClassDeclaration = declarations.find(l => l.kind === ts.SyntaxKind.ClassDeclaration);
+                const isInsideNewExpression =  node?.parent?.kind === ts.SyntaxKind.NewExpression;
+                const isInsideCatch = node?.parent?.kind === ts.SyntaxKind.ThrowStatement;
+                const isLeftSide = node?.parent?.name === node || (node?.parent?.left === node);
+                const isCallOrPropertyAccess = node?.parent?.kind === ts.SyntaxKind.PropertyAccessExpression || node?.parent?.kind === ts.SyntaxKind.ElementAccessExpression;
+                if (!isLeftSide && !isCallOrPropertyAccess && !isInsideCatch && !isInsideNewExpression) {
+                    // return `typeof(${idValue})`; // this is not working as expected
+                    // for instance
+                    // const instance = new x();
+                    // const b = instance;
+                    // gets transpiled to
+                    // var instance = typeof(x);
+                    const symbol = global.checker.getSymbolAtLocation(node);
+                    let isClassDeclaration = false;
+                    if (symbol) {
+                        const first = symbol.declarations[0];
+                        if (first.kind === ts.SyntaxKind.ClassDeclaration) {
+                            isClassDeclaration = true;
+                        }
+                        if (first.kind === ts.SyntaxKind.ImportSpecifier) {
+                            const importedSymbol = global.checker.getAliasedSymbol(symbol);
+                            if (importedSymbol?.declarations[0]?.kind === ts.SyntaxKind.ClassDeclaration) {
+                                isClassDeclaration = true;
+                            }
+                        }
+                    }
+                    // console.log(node.getText(), 'isClass declaration', isClass);
+                    if (isClassDeclaration) {
                         return `typeof(${idValue})`;
+                        // this does not work then the class is imported from another file because
+                        // the type is not resolved correctly and the symbol declaration is simply a importSpecifier
+                        // we would need to find a way to get the type from the importSpecifier
+                        // by loading the entire code upon transpiling the ts file
                     }
                 }
             }
@@ -268,13 +317,18 @@ export class CSharpTranspiler extends BaseTranspiler {
         const type = global.checker.getResolvedSignature(node);
         if (type?.declaration === undefined) {
             let parsedArguments = node.arguments?.map((a) => this.printNode(a, 0)).join(", ");
-            parsedArguments = parsedArguments ? ", " + parsedArguments : "";
+            parsedArguments = parsedArguments ? parsedArguments : "";
             const propName = node.expression?.name.escapedText;
-            const isAsyncDecl = true;
-            // const isAsyncDecl = node?.parent?.kind === ts.SyntaxKind.AwaitExpression;
-            const open = isAsyncDecl ? this.UKNOWN_PROP_ASYNC_WRAPPER_OPEN : this.UKNOWN_PROP_WRAPPER_OPEN;
-            const close = this.UNKOWN_PROP_WRAPPER_CLOSE;
-            return `${open}"${propName}"${parsedArguments}${close}`;
+            // const isAsyncDecl = true;
+            const isAsyncDecl = node?.parent?.kind === ts.SyntaxKind.AwaitExpression;
+            // const open = isAsyncDecl ? this.UKNOWN_PROP_ASYNC_WRAPPER_OPEN : this.UKNOWN_PROP_WRAPPER_OPEN;
+            // const close = this.UNKOWN_PROP_WRAPPER_CLOSE;
+            // return `${open}"${propName}"${parsedArguments}${close}`;
+            const argsArray = `new object[] { ${parsedArguments} }`;
+            const open = this.DYNAMIC_CALL_OPEN;
+            let statement = `${open}this, "${propName}", ${argsArray})`;
+            statement = isAsyncDecl ? `((Task<object>)${statement})` : statement;
+            return statement;
         }
         return undefined;
     }
@@ -289,7 +343,7 @@ export class CSharpTranspiler extends BaseTranspiler {
                 // case "JSON.parse":
                 //     return `json_decode(${parsedArg}, $as_associative_array = true)`;
                 case "Math.abs":
-                    return `Math.Abs((double)${parsedArg})`;
+                    return `Math.Abs(Convert.ToDouble(${parsedArg}))`;
                 }
             } else if (args.length === 2)
             {
@@ -301,7 +355,7 @@ export class CSharpTranspiler extends BaseTranspiler {
                 case "Math.max":
                     return `mathMax(${parsedArg1}, ${parsedArg2})`;
                 case "Math.pow":
-                    return `Math.Pow((double)${parsedArg1}, (double)${parsedArg2})`;
+                    return `Math.Pow(Convert.ToDouble(${parsedArg1}), Convert.ToDouble(${parsedArg2}))`;
                 }
             }
             const leftSide = node.expression?.expression;
@@ -343,13 +397,15 @@ export class CSharpTranspiler extends BaseTranspiler {
         const target = this.printNode(expression, 0);
         switch (right) {
         case "string":
-            return notOperator + `((${target}).GetType() == typeof(string))`;
+            return notOperator + `(${target} is string)`;
         case "number":
-            return notOperator + `((${target}).GetType() == typeof(Int64)) || ((${target}).GetType() == typeof(int) || (${target}).GetType() == typeof(float) || (${target}).GetType() == typeof(double))`;
+            return notOperator + `(${target} is Int64 || ${target} is int || ${target} is float || ${target} is double)`;
         case "boolean":
-            return notOperator + `((${target}).GetType() == typeof(bool))`;
+            return notOperator + `(${target} is bool)`;
         case "object":
-            return notOperator + `((${target}).GetType() == typeof(Dictionary<string, object>))`;
+            return notOperator + `(${target} is IDictionary<string, object>)`;
+        case "function":
+            return notOperator + `(${target} is Delegate)`;
         }
 
         return undefined;
@@ -387,7 +443,7 @@ export class CSharpTranspiler extends BaseTranspiler {
                 const castExp = parsedType ? `(${parsedType})` : "";
 
                 // const statement = this.getIden(identation) + `${e} = (${castExp}((List<object>)${syntheticName}))[${index}]`;
-                const statement = this.getIden(identation) + `${e} = ((List<object>)${syntheticName})[${index}]`;
+                const statement = this.getIden(identation) + `${e} = ((IList<object>)${syntheticName})[${index}]`;
                 if (index < parsedArrayBindingElements.length - 1) {
                     arrayBindingStatement += statement + ";\n";
                 } else {
@@ -468,7 +524,7 @@ export class CSharpTranspiler extends BaseTranspiler {
             parsedArrayBindingElements.forEach((e, index) => {
                 // const type = this.getType(node);
                 // const parsedType = this.getTypeFromRawType(type);
-                const statement = this.getIden(identation) + `var ${e} = ((List<object>) ${syntheticName})[${index}]`;
+                const statement = this.getIden(identation) + `var ${e} = ((IList<object>) ${syntheticName})[${index}]`;
                 if (index < parsedArrayBindingElements.length - 1) {
                     arrayBindingStatement += statement + ";\n";
                 } else {
@@ -480,13 +536,24 @@ export class CSharpTranspiler extends BaseTranspiler {
             return arrayBindingStatement;
         }
 
-        const isNew = (declaration.initializer.kind === ts.SyntaxKind.NewExpression);
-        const varToken = isNew ? 'var ' : 'object ' ;
+        const isNew = declaration.initializer && (declaration.initializer.kind === ts.SyntaxKind.NewExpression);
+        const varToken = isNew ? 'var ' : this.VAR_TOKEN + ' ' ;
 
         // handle default undefined initialization
+        if (declaration.initializer === undefined) {
+            // handle the let id: Str; case
+            return this.getIden(identation) + varToken + this.printNode(declaration.name) + " = " + this.UNDEFINED_TOKEN;
+        }
         const parsedValue = this.printNode(declaration.initializer, identation).trimStart();
         if (parsedValue === this.UNDEFINED_TOKEN) {
-            return this.getIden(identation) + "object " + this.printNode(declaration.name) + " = " + parsedValue;
+            let specificVarToken = "object";
+            if (this.INFER_VAR_TYPE) {
+                const variableType = global.checker.typeToString(global.checker.getTypeAtLocation(declaration));
+                if (this.VariableTypeReplacements[variableType]) {
+                    specificVarToken = this.VariableTypeReplacements[variableType] + '?';
+                }
+            }
+            return this.getIden(identation) + specificVarToken + " " + this.printNode(declaration.name) + " = " + parsedValue;
         }
         return this.getIden(identation) + varToken + this.printNode(declaration.name) + " = " + parsedValue;
     }
@@ -506,7 +573,7 @@ export class CSharpTranspiler extends BaseTranspiler {
             rawExpression = this.isStringType(type.flags) ? `((string)${leftSide}).Length` : `${this.ARRAY_LENGTH_WRAPPER_OPEN}${leftSide}${this.ARRAY_LENGTH_WRAPPER_CLOSE}`; // `(${leftSide}.Cast<object>()).ToList().Count`
             break;
         case 'push':
-            rawExpression = `((List<object>)${leftSide}).Add`;
+            rawExpression = `((IList<object>)${leftSide}).Add`;
             break;
             // case 'push':
             //     rawExpression = `(List<object>${leftSide}).Add`s
@@ -607,10 +674,10 @@ export class CSharpTranspiler extends BaseTranspiler {
 
         if (type.kind === ts.SyntaxKind.ArrayType) {
             if (type.elementType.kind === ts.SyntaxKind.AnyKeyword) {
-                return `(List<object>)(${this.printNode(node.expression, identation)})`;
+                return `(IList<object>)(${this.printNode(node.expression, identation)})`;
             }
             if (type.elementType.kind === ts.SyntaxKind.StringKeyword) {
-                return `(List<string>)(${this.printNode(node.expression, identation)})`;
+                return `(IList<string>)(${this.printNode(node.expression, identation)})`;
             }
         }
 
@@ -740,15 +807,15 @@ export class CSharpTranspiler extends BaseTranspiler {
     // check this out later
 
     printArrayIsArrayCall(node, identation, parsedArg = undefined) {
-        return `(${parsedArg}.GetType().IsGenericType && ${parsedArg}.GetType().GetGenericTypeDefinition().IsAssignableFrom(typeof(List<>)))`;
+        return `((${parsedArg} is IList<object>) || (${parsedArg}.GetType().IsGenericType && ${parsedArg}.GetType().GetGenericTypeDefinition().IsAssignableFrom(typeof(List<>))))`;
     }
 
     printObjectKeysCall(node, identation, parsedArg = undefined) {
-        return `new List<object>(((Dictionary<string,object>)${parsedArg}).Keys)`;
+        return `new List<object>(((IDictionary<string,object>)${parsedArg}).Keys)`;
     }
 
     printObjectValuesCall(node, identation, parsedArg = undefined) {
-        return `new List<object>(((Dictionary<string,object>)${parsedArg}).Values)`;
+        return `new List<object>(((IDictionary<string,object>)${parsedArg}).Values)`;
     }
 
     printJsonParseCall(node, identation, parsedArg = undefined) {
@@ -768,15 +835,19 @@ export class CSharpTranspiler extends BaseTranspiler {
     }
 
     printMathRoundCall(node, identation, parsedArg = undefined) {
-        return `Math.Round((double)${parsedArg})`;
+        return `Math.Round(Convert.ToDouble(${parsedArg}))`;
     }
 
     printMathCeilCall(node, identation, parsedArg = undefined) {
-        `Math.Ceiling((double)${parsedArg})`;
+        return `Math.Ceiling(Convert.ToDouble(${parsedArg}))`;
+    }
+
+    printNumberIsIntegerCall(node: any, identation: any, parsedArg?: any) {
+        return `((${parsedArg} is int) || (${parsedArg} is long) || (${parsedArg} is Int32) || (${parsedArg} is Int64))`;
     }
 
     printArrayPushCall(node, identation, name = undefined, parsedArg = undefined) {
-        return  `((List<object>)${name}).Add(${parsedArg})`;
+        return  `((IList<object>)${name}).Add(${parsedArg})`;
     }
 
     printIncludesCall(node, identation, name = undefined, parsedArg = undefined) {
@@ -787,12 +858,24 @@ export class CSharpTranspiler extends BaseTranspiler {
         return `${this.INDEXOF_WRAPPER_OPEN}${name}, ${parsedArg}${this.INDEXOF_WRAPPER_CLOSE}`;
     }
 
+    printStartsWithCall(node, identation, name = undefined, parsedArg = undefined) {
+        return `((string)${name}).StartsWith(((string)${parsedArg}))`;
+    }
+
+    printEndsWithCall(node, identation, name = undefined, parsedArg = undefined) {
+        return `((string)${name}).EndsWith(((string)${parsedArg}))`;
+    }
+
+    printTrimCall(node, identation, name = undefined) {
+        return `((string)${name}).Trim()`;
+    }
+
     printJoinCall(node, identation, name = undefined, parsedArg = undefined) {
-        return `String.Join(${parsedArg}, ((List<object>)${name}).ToArray())`;
+        return `String.Join(${parsedArg}, ((IList<object>)${name}).ToArray())`;
     }
 
     printSplitCall(node, identation, name = undefined, parsedArg = undefined) {
-        return `((string)${name}).Split((string)${parsedArg}).ToList<object>()`;
+        return `((string)${name}).Split(new [] {((string)${parsedArg})}, StringSplitOptions.None).ToList<object>()`;
     }
 
     printToFixedCall(node, identation, name = undefined, parsedArg = undefined) {
@@ -812,15 +895,15 @@ export class CSharpTranspiler extends BaseTranspiler {
     }
 
     printShiftCall(node, identation, name = undefined) {
-        return `((List<object>)${name}).First()`;
+        return `((IList<object>)${name}).First()`;
     }
 
     printReverseCall(node, identation, name = undefined) {
-        return `((List<object>)${name}).Reverse()`;
+        return `${name} = (${name} as IList<object>).Reverse().ToList()`;
     }
 
     printPopCall(node, identation, name = undefined) {
-        return `((List<object>)${name}).Last()`;
+        return `((IList<object>)${name}).Last()`;
     }
 
     printAssertCall(node, identation, parsedArgs) {
@@ -840,6 +923,18 @@ export class CSharpTranspiler extends BaseTranspiler {
         return `((string)${name}).Replace((string)${parsedArg}, (string)${parsedArg2})`;
     }
 
+    printPadEndCall(node, identation, name, parsedArg, parsedArg2) {
+        return `(${name} as String).PadRight(Convert.ToInt32(${parsedArg}), Convert.ToChar(${parsedArg2}))`;
+    }
+
+    printPadStartCall(node, identation, name, parsedArg, parsedArg2) {
+        return `(${name} as String).PadLeft(Convert.ToInt32(${parsedArg}), Convert.ToChar(${parsedArg2}))`;
+    }
+
+    printDateNowCall(node, identation) {
+        return "(new DateTimeOffset(DateTime.UtcNow)).ToUnixTimeMilliseconds()";
+    }
+
     printLengthProperty(node, identation, name = undefined) {
         const leftSide = this.printNode(node.expression, 0);
         const type = (global.checker as TypeChecker).getTypeAtLocation(node.expression); // eslint-disable-line
@@ -854,6 +949,9 @@ export class CSharpTranspiler extends BaseTranspiler {
         }
         const leftSide = this.printNode(operand, 0);
         const op = this.PostFixOperators[operator]; // todo: handle --
+        if (op === '--') {
+            return `postFixDecrement(ref ${leftSide})`;
+        }
         return `postFixIncrement(ref ${leftSide})`;
     }
 
@@ -882,6 +980,12 @@ export class CSharpTranspiler extends BaseTranspiler {
         return `((bool) ${condition})` + " ? " + whenTrue + " : " + whenFalse;
     }
 
+    printDeleteExpression(node, identation) {
+        const object = this.printNode (node.expression.expression, 0);
+        const key = this.printNode (node.expression.argumentExpression, 0);
+        return `((IDictionary<string,object>)${object}).Remove((string)${key})`;
+    }
+
     printThrowStatement(node, identation) {
         // const expression = this.printNode(node.expression, 0);
         // return this.getIden(node) + this.THROW_TOKEN + " " + expression + this.LINE_TERMINATOR;
@@ -905,7 +1009,7 @@ export class CSharpTranspiler extends BaseTranspiler {
                     if (isClassDeclaration){
                         return this.getIden(identation) + `${this.THROW_TOKEN} ${this.NEW_TOKEN} ${id.escapedText} ((string)${parsedArg}) ${this.LINE_TERMINATOR}`;
                     } else {
-                        return this.getIden(identation) + `throwDynamicException((string)${id.escapedText}, ${parsedArg});return null;`;
+                        return this.getIden(identation) + `throwDynamicException(${id.escapedText}, ${parsedArg});return null;`;
                     }
                 }
                 return this.getIden(identation) + `${this.THROW_TOKEN} ${this.NEW_TOKEN} ${newExpression} (${parsedArg}) ${this.LINE_TERMINATOR}`;
@@ -921,6 +1025,26 @@ export class CSharpTranspiler extends BaseTranspiler {
         // // const throwExpression = ` ${newToken}${newExpression}${this.LEFT_PARENTHESIS}((string)${args})${this.RIGHT_PARENTHESIS}`;
         // return this.getIden(identation) + this.THROW_TOKEN + throwExpression + this.LINE_TERMINATOR;
     }
+
+    // printLeadingComments(node, identation) {
+    //     const fullText = global.src.getFullText();
+    //     const commentsRangeList = ts.getLeadingCommentRanges(fullText, node.pos);
+    //     const commentsRange = commentsRangeList ? commentsRangeList : undefined;
+    //     let res = "";
+    //     if (commentsRange) {
+    //         for (const commentRange of commentsRange) {
+    //             const commentText = fullText.slice(commentRange.pos, commentRange.end);
+    //             if (commentText !== undefined) {
+    //                 const formatted = commentText
+    //                     .split("\n")
+    //                     .map(line=>line.trim())
+    //                     .map(line => !(line.trim().startsWith("*")) ? this.getIden(identation) + line : this.getIden(identation) + " " + line) .join("\n");
+    //                 // res+= this.transformLeadingComment(formatted) + "\n";
+    //             }
+    //         }
+    //     }
+    //     return res;
+    // }
 }
 
 // if (this.requiresCallExpressionCast) {

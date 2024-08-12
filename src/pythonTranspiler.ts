@@ -39,6 +39,7 @@ const parserConfig = {
     'CATCH_DECLARATION': 'Exception as',
     'METHOD_DEFAULT_ACCESS': '',
     'SPREAD_TOKEN': '*',
+    'NULL_TOKEN': 'None',
 };
 export class PythonTranspiler extends BaseTranspiler {
     constructor(config = {}) {
@@ -120,6 +121,10 @@ export class PythonTranspiler extends BaseTranspiler {
         return `int(math.ceil(${parsedArg}))`;
     }
 
+    printNumberIsIntegerCall(node, identation , parsedArg = undefined) {
+        return `isinstance(${parsedArg}, int)`;
+    }
+
     printMathRoundCall(node, identation, parsedArg = undefined) {
         return `int(round(${parsedArg}))`;
     }
@@ -144,6 +149,10 @@ export class PythonTranspiler extends BaseTranspiler {
         return `${name}.pop(0)`;
     }
 
+    printReverseCall(node, identation, name = undefined) {
+        return `${name}.reverse()`;
+    }
+
     printArrayPushCall(node, identation, name, parsedArg) {
         return `${name}.append(${parsedArg})`;
     }
@@ -154,6 +163,26 @@ export class PythonTranspiler extends BaseTranspiler {
 
     printIndexOfCall(node, identation, name = undefined, parsedArg = undefined) {
         return `${name}.find(${parsedArg})`;
+    }
+
+    printStartsWithCall(node, identation, name = undefined, parsedArg = undefined) {
+        return `${name}.startswith(${parsedArg})`;
+    }
+
+    printEndsWithCall(node, identation, name = undefined, parsedArg = undefined) {
+        return `${name}.endswith(${parsedArg})`;
+    }
+
+    printPadEndCall(node, identation, name, parsedArg, parsedArg2) {
+        return `${name}.ljust(${parsedArg}, ${parsedArg2})`;
+    }
+
+    printPadStartCall(node, identation, name, parsedArg, parsedArg2) {
+        return `${name}.rjust(${parsedArg}, ${parsedArg2})`;
+    }
+
+    printTrimCall(node, identation, name = undefined) {
+        return `${name}.strip()`;
     }
 
     printToUpperCaseCall(node, identation, name = undefined) {
@@ -172,6 +201,10 @@ export class PythonTranspiler extends BaseTranspiler {
         return `json.dumps(${parsedArg})`;
     }
 
+    printReplaceCall(node: any, identation: any, name?: any, parsedArg?: any, parsedArg2?: any) {
+        return `${name}.replace(${parsedArg}, ${parsedArg2})`;
+    }
+
     printElementAccessExpressionExceptionIfAny(node) {
         if (node.expression.kind === SyntaxKind.ThisKeyword) {
             return "getattr(self, " + this.printNode(node.argumentExpression, 0) + ")";
@@ -181,6 +214,11 @@ export class PythonTranspiler extends BaseTranspiler {
     printAssertCall(node, identation, parsedArgs) {
         return `assert ${parsedArgs}`;
     }
+
+    printDateNowCall(node, identation) {
+        return "int(time.time() * 1000)";
+    }
+
 
     printForStatement(node, identation) {
         const varName = node.initializer.declarations[0].name.escapedText;
@@ -294,6 +332,11 @@ export class PythonTranspiler extends BaseTranspiler {
 
         const op = node.operatorToken.kind;
 
+        // Fix E712 comparison: if cond == True -> if cond:
+        if ((op === ts.SyntaxKind.EqualsEqualsToken || op === ts.SyntaxKind.EqualsEqualsEqualsToken) && node.right.kind === ts.SyntaxKind.TrueKeyword) {
+            return this.getIden(identation) + this.printNode(node.left, 0);
+        }
+
         if (left.kind === SyntaxKind.TypeOfExpression) {
             const typeOfExpression = this.handleTypeOfInsideBinaryExpression(node, identation);
             if (typeOfExpression) {
@@ -326,6 +369,11 @@ export class PythonTranspiler extends BaseTranspiler {
         const whenFalse = this.printNode(node.whenFalse, 0);
 
         return this.getIden(identation) + whenTrue + " if " + condition + " else " + whenFalse;
+    }
+
+    printDeleteExpression(node, identation) {
+        const expression = this.printNode (node.expression);
+        return `del ${expression}`;
     }
 
     getCustomOperatorIfAny(left, right, operator) {
