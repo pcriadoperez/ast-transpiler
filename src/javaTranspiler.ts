@@ -1059,7 +1059,13 @@ export class JavaTranspiler extends BaseTranspiler {
             if (n.kind === ts.SyntaxKind.Identifier) {
                 const name = n.escapedText as string | undefined;
                 if (name && name !== 'undefined' && !name.startsWith('null')) {
-                    if (this.ReassignedVars[this.getVarKey(n)]) {
+                    // Prefer analyzeFinalVars' pre-walk result (usageToFinalName).
+                    // It detects reassignments anywhere in the function body, even
+                    // when the reassignment happens AFTER the object literal. The
+                    // legacy ReassignedVars is only populated as BinaryExpressions
+                    // are printed, which misses this forward-reference case.
+                    const isReassignedAhead = this.usageToFinalName.has(n);
+                    if (isReassignedAhead || this.ReassignedVars[this.getVarKey(n)]) {
                         const finalName = finalNameFor(n, name);
                         res.push({ orig: name, final: finalName });
                         n.escapedText = finalName;
